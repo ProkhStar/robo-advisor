@@ -24,11 +24,11 @@ def rebal_dates_for(prices: pd.DataFrame, rebalance: str) -> pd.DatetimeIndex:
     rebalance: "monthly" or "quarterly" (other -> monthly)
     """
     if rebalance == "monthly":
-        dates = prices.resample("M").last().index
+        dates = prices.resample("ME").last().index
     elif rebalance == "quarterly":
         dates = prices.resample("Q").last().index
     else:
-        dates = prices.resample("M").last().index
+        dates = prices.resample("ME").last().index
 
     first = prices.index[0]
     dates = pd.DatetimeIndex([d for d in dates if d >= first])

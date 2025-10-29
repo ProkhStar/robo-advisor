@@ -17,6 +17,8 @@ except Exception:
     _HAS_PFOPT = False
 
 import plotly.graph_objs as go
+from backend.app.services.backtest import backtest_weights, rebal_dates_for
+
 
 st.set_page_config(page_title="Robo-Advisor MVP", layout="wide")
 st.title("Robo-Advisor MVP — Demo rápida")
@@ -245,3 +247,4 @@ if btn_run:
                 hist_df = pd.DataFrame({"date": pv_series.index, "portfolio_value": pv_series.values})
                 csv_hist = hist_df.to_csv(index=False).encode("utf-8")
                 st.download_button("Descarregar histórico do backtest (CSV)", data=csv_hist, file_name="backtest_history.csv", mime="text/csv")
+
