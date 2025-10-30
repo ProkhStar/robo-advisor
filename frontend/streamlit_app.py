@@ -145,58 +145,58 @@ with st.sidebar:
     run_shap = st.sidebar.button('Run SHAP explainability')
 st.header("Inputs")
 tickers_input = st.text_input("Tickers (comma separated)", value="SPY, AGG, VT, EEM, BND")
-    start_date = st.date_input("Start date", value=pd.to_datetime("2015-01-01"))
-    capital = st.number_input("Capital (EUR)", min_value=100.0, value=10000.0, step=100.0)
-    rebalance = st.selectbox("Rebalance", options=["monthly", "quarterly"], index=0)
-    method = st.selectbox("Optimization method", options=["max_sharpe", "min_volatility", "equal_weight"], index=0)
-    btn_run = st.button("Gerar alocação e backtest")
+start_date = st.date_input("Start date", value=pd.to_datetime("2015-01-01"))
+capital = st.number_input("Capital (EUR)", min_value=100.0, value=10000.0, step=100.0)
+rebalance = st.selectbox("Rebalance", options=["monthly", "quarterly"], index=0)
+method = st.selectbox("Optimization method", options=["max_sharpe", "min_volatility", "equal_weight"], index=0)
+btn_run = st.button("Gerar alocação e backtest")
 
 def fetch_prices(tickers, start):
-    data = yf.download(tickers, start=start, auto_adjust=True)["Close"]
-    if isinstance(data, pd.Series):
-        data = data.to_frame()
-    data = data.dropna(axis=1, how="all")
-    return data
+data = yf.download(tickers, start=start, auto_adjust=True)["Close"]
+if isinstance(data, pd.Series):
+data = data.to_frame()
+data = data.dropna(axis=1, how="all")
+return data
 
 if btn_run:
-    tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
-    st.write("Tickers:", tickers)
-    with st.spinner("A descarregar preços e a calcular..."):
-        prices = fetch_prices(tickers, start_date)
-        if prices.shape[1] == 0:
-            st.error("Nenhum dado disponível para os tickers indicados.")
-        else:
-            st.subheader("Dados carregados")
-            st.dataframe(prices.tail())
+tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+st.write("Tickers:", tickers)
+with st.spinner("A descarregar preços e a calcular..."):
+prices = fetch_prices(tickers, start_date)
+if prices.shape[1] == 0:
+st.error("Nenhum dado disponível para os tickers indicados.")
+else:
+st.subheader("Dados carregados")
+st.dataframe(prices.tail())
 
-            # ---- compute weights (with fallback) ----
-            if method == "equal_weight":
-                weights = {t: 1/len(tickers) for t in tickers}
-            else:
-                if not _HAS_PFOPT:
-                    st.warning("PyPortfolioOpt não disponível — a alocação será equal-weight.")
-                    weights = {t: 1/len(tickers) for t in tickers}
-                else:
-                    mu = expected_returns.mean_historical_return(prices)
-                    S = risk_models.sample_cov(prices)
-                    ef = EfficientFrontier(mu, S)
-                    try:
-                        if method == "max_sharpe":
-                            ef.max_sharpe()
-                        elif method == "min_volatility":
-                            ef.min_volatility()
-                    except Exception as e:
-                        st.warning(f"Erro na optimização ({e}) — usando equal-weight.")
-                        weights = {t: 1/len(tickers) for t in tickers}
-                    try:
-                        weights = ef.clean_weights()
-                    except Exception:
-                        # if clean_weights not available or failed, calculate from raw weights
-                        try:
-                            raw_w = ef.weights
-                            weights = {k: float(v) for k, v in raw_w.items()}
-                        except Exception:
-                            weights = {t: 1/len(tickers) for t in tickers}
+# ---- compute weights (with fallback) ----
+if method == "equal_weight":
+weights = {t: 1/len(tickers) for t in tickers}
+else:
+if not _HAS_PFOPT:
+st.warning("PyPortfolioOpt não disponível — a alocação será equal-weight.")
+weights = {t: 1/len(tickers) for t in tickers}
+else:
+mu = expected_returns.mean_historical_return(prices)
+S = risk_models.sample_cov(prices)
+ef = EfficientFrontier(mu, S)
+try:
+if method == "max_sharpe":
+ef.max_sharpe()
+elif method == "min_volatility":
+ef.min_volatility()
+except Exception as e:
+st.warning(f"Erro na optimização ({e}) — usando equal-weight.")
+weights = {t: 1/len(tickers) for t in tickers}
+try:
+weights = ef.clean_weights()
+except Exception:
+# if clean_weights not available or failed, calculate from raw weights
+try:
+raw_w = ef.weights
+weights = {k: float(v) for k, v in raw_w.items()}
+except Exception:
+weights = {t: 1/len(tickers) for t in tickers}
 
             # Mostrar alocação
             df_weights = pd.DataFrame.from_dict(weights, orient="index", columns=["weight"])
@@ -249,6 +249,9 @@ if btn_run:
                 hist_df = pd.DataFrame({"date": pv_series.index, "portfolio_value": pv_series.values})
                 csv_hist = hist_df.to_csv(index=False).encode("utf-8")
                 st.download_button("Descarregar histórico do backtest (CSV)", data=csv_hist, file_name="backtest_history.csv", mime="text/csv")
+
+
+
 
 
 
