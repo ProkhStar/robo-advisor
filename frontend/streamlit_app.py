@@ -244,17 +244,11 @@ if btn_run:
                 fig2.add_trace(go.Scatter(x=pv_eq.index, y=pv_eq.values, name="Equal-weight"))
                 fig2.update_layout(title="Comparação: Optimized vs Equal-weight", yaxis_title="Portfolio value (EUR)")
                 st.plotly_chart(fig2, use_container_width=True)
-# SHAP integration - run if requested
-if 'run_shap' in locals() and run_shap:
-    try:
-        render_shap(tickers, start_date, forward_days=21, sample_frac=0.25)
-    except Exception as e:
-        st.error(f"Erro a executar SHAP explainability: {e}")
-                csv_w = df_weights.to_csv().encode("utf-8")
-                st.download_button("Descarregar alocação (CSV)", data=csv_w, file_name="allocation.csv", mime="text/csv")
+
 
                 hist_df = pd.DataFrame({"date": pv_series.index, "portfolio_value": pv_series.values})
                 csv_hist = hist_df.to_csv(index=False).encode("utf-8")
                 st.download_button("Descarregar histórico do backtest (CSV)", data=csv_hist, file_name="backtest_history.csv", mime="text/csv")
+
 
 
