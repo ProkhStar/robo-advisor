@@ -154,8 +154,8 @@ btn_run = st.button("Gerar alocação e backtest")
 def fetch_prices(tickers, start):
     data = yf.download(tickers, start=start, auto_adjust=True)["Close"]
     if isinstance(data, pd.Series):
-    data = data.to_frame()
-    data = data.dropna(axis=1, how="all")
+        data = data.to_frame()
+        data = data.dropna(axis=1, how="all")
     return data
 
     if btn_run:
