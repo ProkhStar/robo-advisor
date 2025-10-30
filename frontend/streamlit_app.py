@@ -1,4 +1,12 @@
 ﻿import math
+
+# --- ensure project root is on sys.path ---
+import os, sys
+proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if proj_root not in sys.path:
+    sys.path.insert(0, proj_root)
+# --- end ensure project root ---
+import math
 from typing import Dict, Tuple
 
 import streamlit as st
@@ -18,7 +26,16 @@ except Exception:
 
 import plotly.graph_objs as go
 
-from frontend.shap_explain import render_shap
+try:
+    from frontend.shap_explain import render_shap
+except Exception:
+    try:
+        # fallback: importar directamente do ficheiro local (mesma pasta)
+        from shap_explain import render_shap
+    except Exception as _e:
+        render_shap = None
+        import warnings
+        warnings.warn(f'Could not import render_shap: {_e}')
 from backend.app.services.backtest import backtest_weights, rebal_dates_for
 
 
@@ -34,7 +51,7 @@ def rebal_dates_for(prices: pd.DataFrame, rebalance: str):
     else:
         dates = prices.resample("M").last().index
     first = prices.index[0]
-    dates = [d for d in dates if d >= first]
+    dates = pd.DatetimeIndex([d for d in dates if d >= first])
     if len(dates) == 0 or dates[0] != first:
         dates = pd.DatetimeIndex([first]).union(dates)
     return dates
@@ -47,7 +64,7 @@ def backtest_weights(
     fee: float = 0.0005,
 ) -> Tuple[pd.Series, Dict]:
     prices = prices.sort_index().ffill().dropna(axis=1, how="all")
-    tickers = [t for t in prices.columns if t in weights and weights[t] > 0]
+    tickers = [t for t in prices.columns if t in weights and float(weights[t]) > 0]
     weights = {t: float(weights.get(t, 0.0)) for t in tickers}
     s = sum(weights.values())
     if s == 0:
@@ -61,7 +78,7 @@ def backtest_weights(
 
     dates = prices.index
     rebal_dates = rebal_dates_for(prices, rebalance)
-    rebal_dates = [d for d in rebal_dates if d >= dates[0] and d <= dates[-1]]
+    rebal_dates = pd.DatetimeIndex([d for d in rebal_dates if d >= dates[0] and d <= dates[-1]])
 
     holdings = {t: 0.0 for t in tickers}
     portfolio_values = pd.Series(index=dates, dtype=float)
@@ -87,10 +104,7 @@ def backtest_weights(
             current_values = {t: holdings[t] * px[t] for t in tickers}
             trades = {t: target_values[t] - current_values[t] for t in tickers}
             traded_value = sum(abs(v) for v in trades.values())
-            if traded_value > 0:
-                fee_paid = traded_value * fee
-            else:
-                fee_paid = 0.0
+            fee_paid = traded_value * fee if traded_value > 0 else 0.0
             total_traded_value += traded_value + fee_paid
             for t in tickers:
                 holdings[t] = target_values[t] / px[t]
@@ -140,9 +154,10 @@ def backtest_weights(
     return portfolio_values, metrics
 # ---------------- END HELPERS ----------------
 
+# Sidebar inputs (UI)
 with st.sidebar:
-    
-    run_shap = st.sidebar.button('Run SHAP explainability')
+    run_shap = st.button("Run SHAP explainability")
+
 st.header("Inputs")
 tickers_input = st.text_input("Tickers (comma separated)", value="SPY, AGG, VT, EEM, BND")
 start_date = st.date_input("Start date", value=pd.to_datetime("2015-01-01"))
@@ -151,104 +166,117 @@ rebalance = st.selectbox("Rebalance", options=["monthly", "quarterly"], index=0)
 method = st.selectbox("Optimization method", options=["max_sharpe", "min_volatility", "equal_weight"], index=0)
 btn_run = st.button("Gerar alocação e backtest")
 
+# Fetch prices helper (indentado corretamente)
 def fetch_prices(tickers, start):
     data = yf.download(tickers, start=start, auto_adjust=True)["Close"]
     if isinstance(data, pd.Series):
         data = data.to_frame()
-        data = data.dropna(axis=1, how="all")
+    data = data.dropna(axis=1, how="all")
     return data
 
-    if btn_run:
+# Main flow: quando o utilizador clica em gerar
+if btn_run:
     tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
     st.write("Tickers:", tickers)
+
     with st.spinner("A descarregar preços e a calcular..."):
-    prices = fetch_prices(tickers, start_date)
-if prices.shape[1] == 0:
-st.error("Nenhum dado disponível para os tickers indicados.")
-else:
-st.subheader("Dados carregados")
-st.dataframe(prices.tail())
+        prices = fetch_prices(tickers, start_date)
 
-# ---- compute weights (with fallback) ----
-if method == "equal_weight":
-weights = {t: 1/len(tickers) for t in tickers}
-else:
-if not _HAS_PFOPT:
-st.warning("PyPortfolioOpt não disponível — a alocação será equal-weight.")
-weights = {t: 1/len(tickers) for t in tickers}
-else:
-mu = expected_returns.mean_historical_return(prices)
-S = risk_models.sample_cov(prices)
-ef = EfficientFrontier(mu, S)
-try:
-if method == "max_sharpe":
-ef.max_sharpe()
-elif method == "min_volatility":
-ef.min_volatility()
-except Exception as e:
-st.warning(f"Erro na optimização ({e}) — usando equal-weight.")
-weights = {t: 1/len(tickers) for t in tickers}
-try:
-weights = ef.clean_weights()
-except Exception:
-# if clean_weights not available or failed, calculate from raw weights
-try:
-raw_w = ef.weights
-weights = {k: float(v) for k, v in raw_w.items()}
-except Exception:
-weights = {t: 1/len(tickers) for t in tickers}
+    if prices.shape[1] == 0:
+        st.error("Nenhum dado disponível para os tickers indicados.")
+    else:
+        st.subheader("Dados carregados")
+        st.dataframe(prices.tail())
 
-            # Mostrar alocação
-            df_weights = pd.DataFrame.from_dict(weights, orient="index", columns=["weight"])
-            df_weights = df_weights[df_weights.weight > 0]
-            df_weights["allocation_EUR"] = (df_weights.weight * capital).round(2)
-            st.subheader("Alocação")
-            st.table(df_weights.sort_values("weight", ascending=False))
+        # ---- compute weights (with fallback) ----
+        if method == "equal_weight":
+            weights = {t: 1/len(tickers) for t in tickers}
+        else:
+            if not _HAS_PFOPT:
+                st.warning("PyPortfolioOpt não disponível — a alocação será equal-weight.")
+                weights = {t: 1/len(tickers) for t in tickers}
+            else:
+                mu = expected_returns.mean_historical_return(prices)
+                S = risk_models.sample_cov(prices)
+                ef = EfficientFrontier(mu, S)
+                try:
+                    if method == "max_sharpe":
+                        ef.max_sharpe()
+                    elif method == "min_volatility":
+                        ef.min_volatility()
+                except Exception as e:
+                    st.warning(f"Erro na optimização ({e}) — usando equal-weight.")
+                    weights = {t: 1/len(tickers) for t in tickers}
+                try:
+                    weights = ef.clean_weights()
+                except Exception:
+                    # if clean_weights not available or failed, calculate from raw weights
+                    try:
+                        raw_w = ef.weights
+                        weights = {k: float(v) for k, v in raw_w.items()}
+                    except Exception:
+                        weights = {t: 1/len(tickers) for t in tickers}
 
-            # ---------------- Backtest ----------------
-            try:
-                pv_series, metrics_bt = backtest_weights(prices, weights, capital=capital, rebalance=rebalance, fee=0.0005)
-            except Exception as e:
-                st.error(f"Erro no backtest: {e}")
-                pv_series = None
-                metrics_bt = {}
+        # Mostrar alocação
+        df_weights = pd.DataFrame.from_dict(weights, orient="index", columns=["weight"])
+        df_weights = df_weights[df_weights.weight > 0]
+        df_weights["allocation_EUR"] = (df_weights.weight * capital).round(2)
+        st.subheader("Alocação")
+        st.table(df_weights.sort_values("weight", ascending=False))
 
-            if pv_series is not None:
-                st.subheader("Resultados do Backtest")
-                metric_display = {
-                    "Start value": metrics_bt.get("start_value"),
-                    "End value": metrics_bt.get("end_value"),
-                    "CAGR": metrics_bt.get("cagr"),
-                    "Annualized Volatility": metrics_bt.get("ann_vol"),
-                    "Sharpe": metrics_bt.get("sharpe"),
-                    "Sortino": metrics_bt.get("sortino"),
-                    "Max Drawdown": metrics_bt.get("max_drawdown"),
-                    "Turnover": metrics_bt.get("turnover"),
-                }
-                metrics_df = pd.DataFrame.from_dict(metric_display, orient="index", columns=["value"])
+        # ---------------- Backtest ----------------
+        try:
+            pv_series, metrics_bt = backtest_weights(prices, weights, capital=capital, rebalance=rebalance, fee=0.0005)
+        except Exception as e:
+            st.error(f"Erro no backtest: {e}")
+            pv_series = None
+            metrics_bt = {}
 
-                col1, col2 = st.columns([2,1])
-                with col1:
-                    st.write(metrics_df)
-                with col2:
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=pv_series.index, y=pv_series.values, name="Portfolio Value"))
-                    st.plotly_chart(fig, use_container_width=True)
+        if pv_series is not None:
+            st.subheader("Resultados do Backtest")
+            metric_display = {
+                "Start value": metrics_bt.get("start_value"),
+                "End value": metrics_bt.get("end_value"),
+                "CAGR": metrics_bt.get("cagr"),
+                "Annualized Volatility": metrics_bt.get("ann_vol"),
+                "Sharpe": metrics_bt.get("sharpe"),
+                "Sortino": metrics_bt.get("sortino"),
+                "Max Drawdown": metrics_bt.get("max_drawdown"),
+                "Turnover": metrics_bt.get("turnover"),
+            }
+            metrics_df = pd.DataFrame.from_dict(metric_display, orient="index", columns=["value"])
 
-                # baseline equal-weight for comparison
-                eq_weights = {t: 1/len(prices.columns) for t in prices.columns}
-                pv_eq, metrics_eq = backtest_weights(prices, eq_weights, capital=capital, rebalance=rebalance, fee=0.0005)
+            col1, col2 = st.columns([2,1])
+            with col1:
+                st.write(metrics_df)
+            with col2:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=pv_series.index, y=pv_series.values, name="Portfolio Value"))
+                st.plotly_chart(fig, use_container_width=True)
 
-                fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(x=pv_series.index, y=pv_series.values, name="Optimized"))
-                fig2.add_trace(go.Scatter(x=pv_eq.index, y=pv_eq.values, name="Equal-weight"))
-                fig2.update_layout(title="Comparação: Optimized vs Equal-weight", yaxis_title="Portfolio value (EUR)")
-                st.plotly_chart(fig2, use_container_width=True)
+            # baseline equal-weight for comparison
+            eq_weights = {t: 1/len(prices.columns) for t in prices.columns}
+            pv_eq, metrics_eq = backtest_weights(prices, eq_weights, capital=capital, rebalance=rebalance, fee=0.0005)
+
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(x=pv_series.index, y=pv_series.values, name="Optimized"))
+            fig2.add_trace(go.Scatter(x=pv_eq.index, y=pv_eq.values, name="Equal-weight"))
+            fig2.update_layout(title="Comparação: Optimized vs Equal-weight", yaxis_title="Portfolio value (EUR)")
+            st.plotly_chart(fig2, use_container_width=True)
+
+            hist_df = pd.DataFrame({"date": pv_series.index, "portfolio_value": pv_series.values})
+            csv_hist = hist_df.to_csv(index=False).encode("utf-8")
+            st.download_button("Descarregar histórico do backtest (CSV)", data=csv_hist, file_name="backtest_history.csv", mime="text/csv")
+
+            # Se o utilizador clicou no botão SHAP (sidebar), executa explainability
+            if run_shap:
+                try:
+                    render_shap(tickers, start_date, forward_days=21, sample_frac=0.25)
+                except Exception as e:
+                    st.error(f"Erro a executar SHAP explainability: {e}")
 
 
-                hist_df = pd.DataFrame({"date": pv_series.index, "portfolio_value": pv_series.values})
-                csv_hist = hist_df.to_csv(index=False).encode("utf-8")
-                st.download_button("Descarregar histórico do backtest (CSV)", data=csv_hist, file_name="backtest_history.csv", mime="text/csv")
+
 
 
 
