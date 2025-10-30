@@ -152,17 +152,17 @@ method = st.selectbox("Optimization method", options=["max_sharpe", "min_volatil
 btn_run = st.button("Gerar alocação e backtest")
 
 def fetch_prices(tickers, start):
-data = yf.download(tickers, start=start, auto_adjust=True)["Close"]
-if isinstance(data, pd.Series):
-data = data.to_frame()
-data = data.dropna(axis=1, how="all")
-return data
+    data = yf.download(tickers, start=start, auto_adjust=True)["Close"]
+    if isinstance(data, pd.Series):
+    data = data.to_frame()
+    data = data.dropna(axis=1, how="all")
+    return data
 
-if btn_run:
-tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
-st.write("Tickers:", tickers)
-with st.spinner("A descarregar preços e a calcular..."):
-prices = fetch_prices(tickers, start_date)
+    if btn_run:
+    tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+    st.write("Tickers:", tickers)
+    with st.spinner("A descarregar preços e a calcular..."):
+    prices = fetch_prices(tickers, start_date)
 if prices.shape[1] == 0:
 st.error("Nenhum dado disponível para os tickers indicados.")
 else:
