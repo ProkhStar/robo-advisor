@@ -144,7 +144,7 @@ with st.sidebar:
     
     run_shap = st.sidebar.button('Run SHAP explainability')
 st.header("Inputs")
-    tickers_input = st.text_input("Tickers (comma separated)", value="SPY, AGG, VT, EEM, BND")
+tickers_input = st.text_input("Tickers (comma separated)", value="SPY, AGG, VT, EEM, BND")
     start_date = st.date_input("Start date", value=pd.to_datetime("2015-01-01"))
     capital = st.number_input("Capital (EUR)", min_value=100.0, value=10000.0, step=100.0)
     rebalance = st.selectbox("Rebalance", options=["monthly", "quarterly"], index=0)
@@ -249,6 +249,7 @@ if btn_run:
                 hist_df = pd.DataFrame({"date": pv_series.index, "portfolio_value": pv_series.values})
                 csv_hist = hist_df.to_csv(index=False).encode("utf-8")
                 st.download_button("Descarregar histórico do backtest (CSV)", data=csv_hist, file_name="backtest_history.csv", mime="text/csv")
+
 
 
 
