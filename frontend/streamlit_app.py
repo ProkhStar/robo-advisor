@@ -270,18 +270,31 @@ if btn_run:
 
             # Se o utilizador clicou no botão SHAP (sidebar), executa explainability
             if run_shap:
-                try:
-                    render_shap(tickers, start_date, forward_days=21, sample_frac=0.25)
-                except Exception as e:
-                    st.error(f"Erro a executar SHAP explainability: {e}")
+    # DEBUG: mostrar disponibilidade da função render_shap (visível no sidebar)
+    try:
+        available = callable(render_shap)
+    except Exception:
+        available = False
+    st.sidebar.markdown(f"**DEBUG** — render_shap callable? `{available}`")
 
-
-
-
-
-
-
-
-
-
-
+    if not available:
+        st.error("SHAP não disponível: função render_shap não foi importada corretamente. Verifica logs no terminal.")
+        # imprime no terminal para debug
+        try:
+            print("DEBUG: render_shap value =", repr(render_shap))
+        except Exception as _e:
+            print("DEBUG: erro ao inspecionar render_shap:", _e)
+    else:
+        st.info("A executar SHAP explainability — isto pode demorar (dependendo do número de features/tickers).")
+        try:
+            with st.spinner("A calcular SHAP values..."):
+                # chama a função e capta qualquer exceção
+                render_shap(tickers, start_date, forward_days=21, sample_frac=0.25)
+            st.success("SHAP concluído.")
+            print("DEBUG: render_shap executed successfully.")
+        except Exception as e:
+            # Mostrar exceção na UI e imprimir no terminal (traceback)
+            st.error(f"Erro a executar SHAP explainability: {e}")
+            import traceback
+            tb = traceback.format_exc()
+            print("DEBUG: Exception running render_shap:\\n" + tb)
